@@ -1,0 +1,29 @@
+ОТЧЁТ ПО ЧАНКИНГУ (V1 vs V2)
+======================================================================
+Источник: C:\My\University\onpz\Processed data
+Документов обработано: 10
+
+--- V1: chunks_v1_by_section.jsonl (чанк = раздел/подраздел/таблица) ---
+Лимит токенов: 800
+Всего чанков: 45
+По типам: {'text': 33, 'table': 12}
+Токены: min=47, max=451, avg=191.7
+
+--- V2: chunks_v2_by_fact.jsonl (чанк = пункт списка / строка таблицы / мелкий абзац) ---
+Лимит токенов на текстовый абзац: 220; порог списка: >= 3 пунктов
+Всего чанков: 206
+По типам: {'text': 23, 'list_item': 79, 'table_row': 104}
+Токены: min=23, max=182, avg=64.1
+Целевой диапазон по плану ТЗ (неделя 3): 150-250 чанков -> ДОСТИГНУТ
+
+Чанков по документам (V1 / V2):
+  00_reglament_obzor_eloy_avt.md: 5 / 20
+  01_reglament_eloy.md: 4 / 23
+  02_reglament_at_shema.md: 6 / 22
+  03_reglament_at_rezhim_k1_k2.md: 6 / 28
+  04_reglament_vt_vakuum.md: 5 / 20
+  05_reglament_stabilizaciya.md: 3 / 20
+  06_reglament_material_balans.md: 3 / 31
+  07_reglament_oborudovanie.md: 4 / 16
+  08_reglament_tb.md: 5 / 14
+  09_reglament_operativnoe_upravlenie.md: 4 / 12
