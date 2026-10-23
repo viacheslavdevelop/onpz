@@ -1,13 +1,4 @@
 """
-chunking.py
------------
-Реализация этапа "Чанкинг" из ТЗ (КР №2, направление MES / RAG на примере АВТ).
-
-Скрипт строит ДВЕ версии чанкинга из одного и того же корпуса, чтобы в
-пояснительной записке можно было явно сравнить подходы (см. раздел
-"Оценка качества" ТЗ: "Качество ответов LLM при разном количестве чанков
-в контексте" и общий принцип "сравнивать разные варианты"):
-
   V1 "by_section"  - чанк = раздел/подраздел документа целиком (или кусок
                       раздела, если он длиннее MAX_TOKENS_V1 токенов).
                       Таблица -> один чанк на всю таблицу.
@@ -25,14 +16,6 @@ chunking.py
                           ближе к размеру одного факта.
                       Такая нарезка даёт число чанков, близкое к диапазону
                       150-250, заданному в плане работы ТЗ (неделя 3).
-
-Запуск:
-    python chunking.py
-
-Вход:  ./Processed data/*.md
-Выход: ./Chunks/chunks_v1_by_section.jsonl
-       ./Chunks/chunks_v2_by_fact.jsonl
-       ./Chunks/chunking_report.txt   (сводная статистика + сравнение V1 vs V2)
 """
 
 from __future__ import annotations
@@ -42,22 +25,16 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# ----------------------------------------------------------------------------
-# Конфигурация
-# ----------------------------------------------------------------------------
-
-SRC_DIR = Path(__file__).parent / "Processed data"
-OUT_DIR = Path(__file__).parent / "Chunks"
+SRC_DIR = Path(__file__).parent.parent / "Processed data"
+OUT_DIR = Path(__file__).parent.parent / "Chunks"
 OUT_V1 = OUT_DIR / "chunks_v1_by_section.jsonl"
 OUT_V2 = OUT_DIR / "chunks_v2_by_fact.jsonl"
 OUT_REPORT = OUT_DIR / "chunking_report.txt"
 
-MAX_TOKENS_V1 = 800   # лимит из буквальной формулировки ТЗ ("длиннее 800 токенов")
-MAX_TOKENS_V2 = 220   # сниженный лимит для "фактовой" нарезки V2
-LIST_MIN_ITEMS = 3    # минимальное число пунктов списка, чтобы резать по пунктам
+MAX_TOKENS_V1 = 800
+MAX_TOKENS_V2 = 220
+LIST_MIN_ITEMS = 3
 
-# Для русского текста с LaTeX-вставками 1 токен (sub-word, как у sentence-transformers
-# / BPE-токенизаторов) эмпирически ближе к ~0.75 слова, т.е. 1 слово ~= 1.3 токена.
 TOKENS_PER_WORD = 1.3
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -72,9 +49,9 @@ def estimate_tokens(text: str) -> int:
     return max(1, round(len(words) * TOKENS_PER_WORD))
 
 
-# ----------------------------------------------------------------------------
+
 # Шаг 1. Разбор markdown-файла на иерархию "раздел (##) -> подраздел (###)"
-# ----------------------------------------------------------------------------
+
 
 @dataclass
 class Unit:
@@ -121,13 +98,13 @@ def parse_document(text: str) -> tuple[str, list[Unit]]:
     return title, units
 
 
-# ----------------------------------------------------------------------------
+
 # Шаг 2. Разбиение содержимого Unit на блоки: "table" и "text"
-# ----------------------------------------------------------------------------
+
 
 @dataclass
 class Block:
-    kind: str  # "table" | "text"
+    kind: str
     lines: list[str]
 
 
@@ -158,9 +135,9 @@ def split_into_blocks(lines: list[str]) -> list[Block]:
     return blocks
 
 
-# ----------------------------------------------------------------------------
+
 # Утилиты для таблиц
-# ----------------------------------------------------------------------------
+
 
 def clean_cell(cell: str) -> str:
     cell = cell.strip()
@@ -203,9 +180,9 @@ def split_table_rows(table_lines: list[str]) -> list[dict]:
     return out
 
 
-# ----------------------------------------------------------------------------
+
 # Утилиты для текста: абзацы, упаковка, разбиение списков
-# ----------------------------------------------------------------------------
+
 
 def split_paragraphs(text: str) -> list[str]:
     parts = re.split(r"\n\s*\n", text.strip("\n"))
@@ -243,7 +220,7 @@ def try_split_list(paragraph: str, min_items: int = LIST_MIN_ITEMS):
         return None
     tail = lines[first_idx:]
     if not all(LIST_ITEM_RE.match(l) for l in tail):
-        return None  # список прерывается "обычной" строкой - не трогаем
+        return None
     if len(tail) < min_items:
         return None
     intro = "\n".join(lines[:first_idx]).strip()
@@ -251,9 +228,9 @@ def try_split_list(paragraph: str, min_items: int = LIST_MIN_ITEMS):
     return intro, items
 
 
-# ----------------------------------------------------------------------------
+
 # V1: чанк = раздел/подраздел (или его часть при превышении лимита)
-# ----------------------------------------------------------------------------
+
 
 def chunk_text_block_v1(text: str, max_tokens: int) -> list[str]:
     text = text.strip("\n")
@@ -322,9 +299,9 @@ def build_chunks_for_file_v1(path: Path) -> list[dict]:
     return chunks
 
 
-# ----------------------------------------------------------------------------
+
 # V2: чанк = один факт (пункт списка / строка таблицы / мелкий абзац)
-# ----------------------------------------------------------------------------
+
 
 def chunk_text_block_v2(text: str, max_tokens: int) -> list[dict]:
     text = text.strip("\n")
@@ -408,9 +385,9 @@ def build_chunks_for_file_v2(path: Path) -> list[dict]:
     return chunks
 
 
-# ----------------------------------------------------------------------------
+
 # Главный цикл + отчёт
-# ----------------------------------------------------------------------------
+
 
 def write_jsonl(path: Path, chunks: list[dict]) -> None:
     with path.open("w", encoding="utf-8") as f:
@@ -454,17 +431,17 @@ def main() -> None:
 
     lines = [
         "ОТЧЁТ ПО ЧАНКИНГУ (V1 vs V2)",
-        "=" * 70,
+
         f"Источник: {SRC_DIR}",
         f"Документов обработано: {len(md_files)}",
         "",
-        "--- V1: chunks_v1_by_section.jsonl (чанк = раздел/подраздел/таблица) ---",
+        "V1: chunks_v1_by_section.jsonl (чанк = раздел/подраздел/таблица)",
         f"Лимит токенов: {MAX_TOKENS_V1}",
         f"Всего чанков: {s1['total']}",
         f"По типам: {s1['by_type']}",
         f"Токены: min={s1['min']}, max={s1['max']}, avg={s1['avg']:.1f}",
         "",
-        "--- V2: chunks_v2_by_fact.jsonl (чанк = пункт списка / строка таблицы / мелкий абзац) ---",
+        "V2: chunks_v2_by_fact.jsonl (чанк = пункт списка / строка таблицы / мелкий абзац)",
         f"Лимит токенов на текстовый абзац: {MAX_TOKENS_V2}; порог списка: >= {LIST_MIN_ITEMS} пунктов",
         f"Всего чанков: {s2['total']}",
         f"По типам: {s2['by_type']}",
