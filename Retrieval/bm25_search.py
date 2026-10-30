@@ -2,6 +2,7 @@ import pickle
 import re
 from pathlib import Path
 
+import pymorphy3
 from rank_bm25 import BM25Okapi
 
 from chunks_io import load_chunks
@@ -10,9 +11,22 @@ INDEX_PATH = Path(__file__).parent.parent / "Chunks" / "bm25_index.pkl"
 
 TOKEN_RE = re.compile(r"[a-zа-яё0-9]+")
 
+_morph = pymorphy3.MorphAnalyzer()
+_lemma_cache: dict[str, str] = {}
+
+
+def lemmatize_word(word: str) -> str:
+    cached = _lemma_cache.get(word)
+    if cached is not None:
+        return cached
+    lemma = _morph.parse(word)[0].normal_form
+    _lemma_cache[word] = lemma
+    return lemma
+
 
 def tokenize(text: str) -> list[str]:
-    return TOKEN_RE.findall(text.lower())
+    words = TOKEN_RE.findall(text.lower())
+    return [lemmatize_word(w) for w in words]
 
 
 def build_index(chunks: list[dict]) -> BM25Okapi:

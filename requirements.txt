@@ -2,3 +2,4 @@ rank_bm25==0.2.2
 sentence-transformers==3.3.1
 faiss-cpu==1.9.0
 numpy==1.26.4
+pymorphy3==2.0.6
