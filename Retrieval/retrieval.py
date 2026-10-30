@@ -15,6 +15,75 @@ def build_chunk_lookup() -> dict:
     return {c["chunk_id"]: c for c in load_chunks()}
 
 
+def list_group_key(chunk: dict) -> tuple | None:
+    if chunk.get("type") != "list_item" or not chunk.get("list_intro"):
+        return None
+    return (chunk["document"], chunk.get("section"), chunk.get("subsection"), chunk["list_intro"])
+
+
+def part_index(chunk: dict) -> int:
+    part = chunk.get("part")
+    return int(part.split("/")[0]) if part else 0
+
+
+def build_list_groups(chunks: list[dict]) -> dict[tuple, list[dict]]:
+    groups: dict[tuple, list[dict]] = {}
+    for chunk in chunks:
+        key = list_group_key(chunk)
+        if key is not None:
+            groups.setdefault(key, []).append(chunk)
+    for group in groups.values():
+        group.sort(key=part_index)
+    return groups
+
+
+def expand_list_siblings(chunk_id: str, chunk_lookup: dict, list_groups: dict) -> list[dict]:
+    chunk = chunk_lookup.get(chunk_id)
+    if chunk is None:
+        return []
+    key = list_group_key(chunk)
+    return list_groups[key] if key is not None else [chunk]
+
+
+def expand_results(chunk_ids: list[str], chunk_lookup: dict, list_groups: dict) -> list[dict]:
+    seen: set[str] = set()
+    expanded: list[dict] = []
+    for chunk_id in chunk_ids:
+        for sibling in expand_list_siblings(chunk_id, chunk_lookup, list_groups):
+            if sibling["chunk_id"] not in seen:
+                seen.add(sibling["chunk_id"])
+                expanded.append(sibling)
+    return expanded
+
+
+def has_list_item(chunk_ids: list[str], chunk_lookup: dict) -> bool:
+    return any(chunk_lookup.get(cid, {}).get("type") == "list_item" for cid in chunk_ids)
+
+
+def merged_chunk_ids(*result_lists: list[tuple[str, float]]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for results in result_lists:
+        for chunk_id, _ in results:
+            if chunk_id not in seen:
+                seen.add(chunk_id)
+                ordered.append(chunk_id)
+    return ordered
+
+
+def format_expanded_procedure(expanded_chunks: list[dict]) -> str:
+    lines = ["**Развёрнутый контекст процедуры (list_item-группы):**"]
+    current_key = None
+    for chunk in expanded_chunks:
+        key = list_group_key(chunk)
+        if key is not None and key != current_key:
+            lines.append(f"_{chunk.get('subsection') or chunk.get('section')}: {chunk['list_intro']}_")
+        current_key = key
+        text = chunk["text"].replace("\n", " ").strip()
+        lines.append(f"- `{chunk['chunk_id']}` {text}")
+    return "\n".join(lines)
+
+
 def chunk_summary(chunk: dict) -> str:
     location = chunk.get("subsection") or chunk.get("section") or chunk.get("document") or ""
     snippet = chunk.get("text", "").replace("\n", " ").strip()
@@ -43,10 +112,20 @@ def print_results(method: str, results: list[tuple[str, float]], chunk_lookup: d
 
 def run_cli_query(query: str, method: str, top_k: int) -> None:
     chunk_lookup = build_chunk_lookup()
-    if method in ("bm25", "both"):
-        print_results("BM25", run_bm25(query, top_k), chunk_lookup)
-    if method in ("vector", "both"):
-        print_results("Vector", run_vector(query, top_k), chunk_lookup)
+    list_groups = build_list_groups(load_chunks())
+
+    bm25_results = run_bm25(query, top_k) if method in ("bm25", "both") else []
+    vector_results = run_vector(query, top_k) if method in ("vector", "both") else []
+
+    if bm25_results:
+        print_results("BM25", bm25_results, chunk_lookup)
+    if vector_results:
+        print_results("Vector", vector_results, chunk_lookup)
+
+    merged_ids = merged_chunk_ids(bm25_results, vector_results)
+    if has_list_item(merged_ids, chunk_lookup):
+        expanded = expand_results(merged_ids, chunk_lookup, list_groups)
+        print(f"\n{format_expanded_procedure(expanded)}")
 
 
 def load_test_queries() -> list[dict]:
@@ -63,6 +142,7 @@ def format_markdown_results(title: str, results: list[tuple[str, float]], chunk_
 
 def run_all_test_queries(top_k: int = 5) -> None:
     chunk_lookup = build_chunk_lookup()
+    list_groups = build_list_groups(load_chunks())
     queries = load_test_queries()
 
     bm25_index, bm25_chunk_ids = bm25_search.load_index()
@@ -86,6 +166,13 @@ def run_all_test_queries(top_k: int = 5) -> None:
         sections.append(format_markdown_results("BM25", bm25_results, chunk_lookup))
         sections.append("")
         sections.append(format_markdown_results("Vector", vector_results, chunk_lookup))
+
+        if category == "procedural":
+            merged_ids = merged_chunk_ids(bm25_results, vector_results)
+            expanded = expand_results(merged_ids, chunk_lookup, list_groups)
+            sections.append("")
+            sections.append(format_expanded_procedure(expanded))
+
         sections.append("")
 
     RESULTS_PATH.write_text("\n".join(sections), encoding="utf-8")
