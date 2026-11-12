@@ -13,7 +13,9 @@
 ```
 onpz/
 ├── MES_ТЗ_2_на_RAG_подходы_на_примере_АВТ.docx   # Техническое задание на курсовую работу
+├── PLAN_AI_AGENT.md                                 # План работ недель 6–7
 ├── README.md
+├── requirements.txt
 ├── .gitignore
 ├── Utils/
 │   └── chunking.py                                  # Скрипт чанкинга (V1 и V2)
@@ -35,10 +37,43 @@ onpz/
 │   ├── 07_reglament_oborudovanie.md
 │   ├── 08_reglament_tb.md
 │   └── 09_reglament_operativnoe_upravlenie.md
-└── Chunks/                                          # Результаты чанкинга
-    ├── chunks_v1_by_section.jsonl   (45 чанков)
-    ├── chunks_v2_by_fact.jsonl      (206 чанков)
-    └── chunking_report.txt
+├── Chunks/                                          # Результаты чанкинга и индексы
+│   ├── chunks_v1_by_section.jsonl   (45 чанков)
+│   ├── chunks_v2_by_fact.jsonl      (206 чанков)
+│   ├── chunking_report.txt
+│   ├── bm25_index.pkl
+│   ├── faiss_index.bin
+│   └── faiss_chunk_ids.json
+├── Retrieval/                                       # Поиск
+│   ├── bm25_search.py
+│   ├── vector_search.py
+│   ├── hybrid_retrieval.py
+│   ├── alpha_tuning.py
+│   ├── query_expansion.py                           # Раскрытие аббревиатур в запросе
+│   └── retrieval.py
+├── Generation/                                      # Генерация ответа (неделя 6)
+│   ├── llm_client.py                                # Клиент llama-server
+│   ├── prompt.py                                    # Промпт и сборка контекста
+│   └── generate.py                                  # CLI генерации
+├── Eval/                                            # Разметка, прогоны и оценка (неделя 7)
+│   ├── test_queries.json                            # 25 запросов с gold_chunk_ids
+│   ├── alpha_tuning.md
+│   ├── preliminary_results.md
+│   ├── hybrid_results.md
+│   ├── answers.jsonl                                # Машинный вывод генерации
+│   ├── answers_top3.jsonl
+│   ├── answers_top10.jsonl
+│   ├── answers_abbrev.jsonl
+│   ├── generation_results.md
+│   ├── generation_results_top3.md
+│   ├── generation_results_top10.md
+│   ├── generation_results_abbrev.md
+│   ├── manual_scores.json                           # Шаблон ручной оценки
+│   ├── evaluate.py                                  # Recall@5, MRR@5, сводка
+│   ├── metrics.json
+│   └── metrics.md
+└── Models/                                          # Веса LLM, в .gitignore
+    └── T-lite-it-2.1-Q4_K_M.gguf
 ```
 
 ## Стек технологий
@@ -50,22 +85,22 @@ onpz/
 | Эмбеддинги | sentence-transformers (all-MiniLM-L6-v2 / rubert-tiny) | OpenAI text-embedding-3-small |
 | Векторная БД | FAISS / ChromaDB | Qdrant |
 | BM25 | rank_bm25 | elasticsearch |
-| LLM | transformers (локально) или API | llama.cpp |
+| LLM | llama.cpp + T-lite-it-2.1 8B (Q4_K_M) | transformers / внешний API |
 | Интерфейс | Gradio / Streamlit | CLI |
 | Оценка | scikit-learn, numpy | – |
 
 ## План работы (10 недель)
 
-1. Анализ предметной области, сбор открытых источников, структура учебного регламента.
-2. Подготовка корпуса: 8–12 markdown-документов с разметкой структуры.
-3. Чанкинг: нарезка, сохранение метаданных (~150–250 чанков).
-4. BM25-поиск и векторный индекс (FAISS/ChromaDB), первый прогон.
-5. Гибридный поиск BM25 + векторный, подбор веса, переранжирование.
-6. Подключение LLM: промпт-инжиниринг, генерация ответов с контекстом и ссылками.
-7. Оценка: Recall@5, MRR, Answer Accuracy, Hallucination Rate.
-8. Веб-интерфейс (Gradio/Streamlit): чат + отображение источников.
-9. Пояснительная записка (25–35 стр.).
-10. Презентация и защита.
+1. ✅ Анализ предметной области, сбор открытых источников, структура учебного регламента.
+2. ✅ Подготовка корпуса: 10 markdown-документов с разметкой структуры.
+3. ✅ Чанкинг: нарезка, сохранение метаданных (206 чанков V2 `by_fact`).
+4. ✅ BM25-поиск и векторный индекс (FAISS), первый прогон.
+5. ✅ Гибридный поиск BM25 + векторный, подбор веса `alpha = 0.7`.
+6. ✅ Подключение LLM: промпт-инжиниринг, генерация ответов с контекстом и ссылками.
+7. ✅ Оценка: Recall@5, MRR, Answer Accuracy, Hallucination Rate.
+8. ⬜ Веб-интерфейс (Gradio/Streamlit): чат + отображение источников.
+9. ⬜ Пояснительная записка (25–35 стр.).
+10. ⬜ Презентация и защита.
 
 ## Метрики оценки
 
@@ -107,6 +142,112 @@ python Utils/chunking.py
 
 Реализован `Retrieval/hybrid_retrieval.py`: кандидаты от BM25 и векторного поиска (top-20) нормализуются min-max в [0, 1] и объединяются взвешенной суммой `hybrid_score = alpha * bm25_norm + (1 - alpha) * vector_norm`.
 
-Вес `alpha` подобран на частичной ручной разметке `gold_chunk_ids` (13 из 25 запросов, категории `factual` и `synonym_abbreviation`, см. `Eval/alpha_tuning.md`): сравнивался Recall@5 при `alpha ∈ {0.0, 0.3, 0.5, 0.7, 1.0}`. Выбрано **`alpha = 0.7`** — полный Recall@5 (13/13) на размеченных запросах при сохранении вклада векторного метода (в отличие от `alpha = 1.0`, эквивалентного чистому BM25).
+Вес `alpha` подобран на ручной разметке `gold_chunk_ids` (22 из 25 запросов, все категории, кроме `trap`, см. `Eval/alpha_tuning.md`): сравнивался Recall@5 при `alpha ∈ {0.0, 0.3, 0.5, 0.7, 1.0}`. Выбрано **`alpha = 0.7`** — полный Recall@5 (22/22) на размеченных запросах при сохранении вклада векторного метода (в отличие от `alpha = 1.0`, эквивалентного чистому BM25).
 
 Прогон гибридного метода по всем 25 тестовым запросам сохранён в `Eval/hybrid_results.md` (сравнение с `Eval/preliminary_results.md` — материал для недели 7).
+
+После полной разметки 22 нетрап-запросов отчёт `Eval/alpha_tuning.md` пересчитан: `alpha = 0.7` даёт Recall@5 = 22/22 = 1.000 (у `alpha = 1.0` тот же Recall при более низком MRR гибрида).
+
+## Генерация ответа (неделя 6)
+
+Ответ синтезируется локальной LLM **T-lite-it-2.1 8B** (GGUF `Q4_K_M`, архитектура Qwen3, русскоязычная настройка) через `llama-server` с OpenAI-совместимым API. Веса лежат в `Models/T-lite-it-2.1-Q4_K_M.gguf` и не коммитятся.
+
+Запуск сервера (llama.cpp устанавливается отдельно):
+
+```powershell
+llama-server -m "Models/T-lite-it-2.1-Q4_K_M.gguf" `
+  -c 8192 -ngl 99 -fa on --jinja `
+  --host 127.0.0.1 --port 8080
+```
+
+Если используется Ollama, подойдёт алиас `second_constantine/t-lite-it-2.1:8b`; клиент обратится к `http://127.0.0.1:11434/v1`.
+
+Параметры клиента задаются переменными окружения:
+
+| Переменная | Значение по умолчанию | Назначение |
+|---|---|---|
+| `LLM_BASE_URL` | `http://127.0.0.1:8080/v1` | адрес OpenAI-совместимого API |
+| `LLM_MODEL` | `t-lite-it-2.1` | имя модели в запросе |
+| `LLM_TIMEOUT` | `180` | таймаут одного запроса, секунд |
+
+Перед запуском в PowerShell:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+```
+
+Примеры команд:
+
+```powershell
+python Generation/generate.py --query "Какое давление поддерживается в отбензинивающей колонне К-1?"
+python Generation/generate.py --query "..." --show_context
+python Generation/generate.py --run_all
+python Generation/generate.py --run_all --top_k 3 --tag top3
+python Generation/generate.py --run_all --top_k 10 --tag top10
+python Generation/generate.py --run_all --expand_abbrev --tag abbrev
+```
+
+Как устроена генерация:
+
+* гибридный поиск возвращает top_k источников (`alpha = 0.7`);
+* для `list_item`-чанков в контекст добавляются соседи по группе процедуры, но отдельными источниками они не нумеруются;
+* контекст ограничен 9000 символами и обрезается по границе блока;
+* inline-формулы LaTeX в контексте преобразуются в обычную текстовую запись;
+* модель обязана ссылаться на источники `[n]`, а блок «Источники» формируется кодом, а не моделью;
+* ссылки на источники, которых нет в контексте, удаляются из ответа после генерации;
+* ответ ограничен 150 словами, чтобы модель не пересказывала весь контекст;
+* при отсутствии ответа модель возвращает ровно `Информация не найдена в регламенте.`;
+* `temperature = 0.1`, `seed = 42`, thinking выключен по умолчанию (флаг `--think` включает его для контрольных прогонов).
+
+Артефакты:
+
+* `Eval/answers.jsonl` — по одной JSON-строке на запрос (retrieval, ответ, usage, latency);
+* `Eval/generation_results.md` — человекочитаемый отчёт по 25 запросам;
+* при `--tag <tag>` создаются `Eval/answers_<tag>.jsonl` и `Eval/generation_results_<tag>.md`, baseline-файлы не перезаписываются.
+
+## Оценка (неделя 7)
+
+Все 25 тестовых запросов размечены: у 22 нетрап-запросов заполнены `gold_chunk_ids` и `reference_answer`, у trap-запросов `gold_chunk_ids` пуст и задано `expected_behavior: "refusal"`.
+
+Расчёт метрик:
+
+```powershell
+python Retrieval/alpha_tuning.py
+python Eval/evaluate.py
+```
+
+`Eval/evaluate.py` считает:
+
+* **Recall@5** и **MRR@5** для BM25 (`alpha = 1.0`), vector (`alpha = 0.0`) и hybrid (`alpha = 0.7`) на 22 размеченных запросах;
+* **refusal_rate** — долю отказов модели;
+* **trap_refusal_correctness** — долю корректных отказов на T1–T3;
+* **Answer Accuracy** (среднее по шкале 0/1/2) и **Hallucination Rate** — только после ручной оценки;
+* сравнение `top_k` 3/5/10 и варианта с раскрытием аббревиатур (если соответствующие прогоны существуют).
+
+Текущие метрики поиска на 22 запросах:
+
+| Метод | Recall@5 | MRR@5 |
+|---|---|---|
+| BM25 | 1.000 | 0.823 |
+| Vector | 0.773 | 0.583 |
+| Hybrid, `alpha = 0.7` | 1.000 | 0.871 |
+
+Раскрытие аббревиатур сохраняет Recall@5, но немного снижает MRR@5:
+
+| Вариант | Recall@5 | MRR@5 |
+|---|---|---|
+| Базовый запрос | 1.000 | 0.871 |
+| С раскрытием аббревиатур | 1.000 | 0.848 |
+
+Прогоны `top_k = 3`, `top_k = 10` и `--expand_abbrev` сохранены в `Eval/answers_*.jsonl`. Их метрики качества генерации появятся после заполнения соответствующих файлов ручной оценки.
+
+Результаты сохраняются в `Eval/metrics.json` и `Eval/metrics.md`. Пока `Eval/manual_scores.json` содержит `null`, метрики генерации выводятся как `null` с пометкой «требуется ручная оценка»; скрипт не подставляет оценки автоматически.
+
+Правила ручной оценки:
+
+* `answer_accuracy`: `2` — верно и полно, `1` — частично верно или неполно, `0` — неверно либо необоснованный отказ; для trap-запросов корректный отказ оценивается в `2`;
+* `hallucination`: `true`, если в ответе есть факт, число или единица, которых нет в переданном контексте;
+* `comment` обязателен при `answer_accuracy != 2` или `hallucination = true`.
+
+Для вариантов `top_k` и аббревиатур можно завести отдельные файлы `manual_scores_top3.json`, `manual_scores_top10.json` и `manual_scores_abbrev.json` по той же схеме — тогда `evaluate.py` добавит их в сравнительные таблицы.
+

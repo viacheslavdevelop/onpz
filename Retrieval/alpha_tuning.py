@@ -62,7 +62,7 @@ def main() -> None:
 
     n = len(labeled)
     lines = ["# Подбор alpha для гибридного поиска (неделя 5)", ""]
-    lines.append(f"Размечено запросов: {n} из {len(queries)} (категории factual и synonym_abbreviation).")
+    lines.append(f"Размечено запросов: {n} из {len(queries)} (все категории, кроме trap).")
     lines.append("")
     lines.append(f"alpha=0.0 эквивалентен чистому vector-поиску, alpha=1.0 — чистому BM25.")
     lines.append("")
@@ -83,7 +83,7 @@ def main() -> None:
     lines.append("")
     lines.append(f"**Лучший alpha по Recall@5 на размеченных запросах: {best_alpha}** (возможна ничья — см. таблицу).")
 
-    REPORT_PATH.write_text("\n".join(lines), encoding="utf-8")
+    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"\nСохранено: {REPORT_PATH}")
     for alpha in ALPHAS:
         print(f"alpha={alpha}: Recall@5 = {totals[alpha]}/{n} = {totals[alpha] / n:.3f}")
