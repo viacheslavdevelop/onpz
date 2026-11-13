@@ -148,7 +148,7 @@ python Utils/chunking.py
 
 После полной разметки 22 нетрап-запросов отчёт `Eval/alpha_tuning.md` пересчитан: `alpha = 0.7` даёт Recall@5 = 22/22 = 1.000 (у `alpha = 1.0` тот же Recall при более низком MRR гибрида).
 
-## Генерация ответа (неделя 6)
+## Генерация ответа
 
 Ответ синтезируется локальной LLM **T-lite-it-2.1 8B** (GGUF `Q4_K_M`, архитектура Qwen3, русскоязычная настройка) через `llama-server` с OpenAI-совместимым API. Веса лежат в `Models/T-lite-it-2.1-Q4_K_M.gguf` и не коммитятся.
 
@@ -249,5 +249,4 @@ python Eval/evaluate.py
 * `hallucination`: `true`, если в ответе есть факт, число или единица, которых нет в переданном контексте;
 * `comment` обязателен при `answer_accuracy != 2` или `hallucination = true`.
 
-Для вариантов `top_k` и аббревиатур можно завести отдельные файлы `manual_scores_top3.json`, `manual_scores_top10.json` и `manual_scores_abbrev.json` по той же схеме — тогда `evaluate.py` добавит их в сравнительные таблицы.
 
