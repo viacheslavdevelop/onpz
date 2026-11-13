@@ -205,7 +205,7 @@ python Generation/generate.py --run_all --expand_abbrev --tag abbrev
 * `Eval/generation_results.md` — человекочитаемый отчёт по 25 запросам;
 * при `--tag <tag>` создаются `Eval/answers_<tag>.jsonl` и `Eval/generation_results_<tag>.md`, baseline-файлы не перезаписываются.
 
-## Оценка (неделя 7)
+## Оценка
 
 Все 25 тестовых запросов размечены: у 22 нетрап-запросов заполнены `gold_chunk_ids` и `reference_answer`, у trap-запросов `gold_chunk_ids` пуст и задано `expected_behavior: "refusal"`.
 
