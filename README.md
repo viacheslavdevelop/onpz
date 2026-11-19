@@ -13,10 +13,15 @@
 ```
 onpz/
 ├── MES_ТЗ_2_на_RAG_подходы_на_примере_АВТ.docx   # Техническое задание на курсовую работу
-├── PLAN_AI_AGENT.md                                 # План работ недель 6–7
+├── PLAN_AI_AGENT.md                                 # План работ недели 8 (веб-интерфейс на Gradio)
 ├── README.md
 ├── requirements.txt
+├── run_app.ps1                                      # Запуск веб-интерфейса в один клик
 ├── .gitignore
+├── App/                                             # Веб-интерфейс (неделя 8)
+│   ├── app.py                                       # Точка входа Gradio
+│   ├── ui_components.py                             # Источники, статус LLM, метаданные
+│   └── metrics_view.py                              # Read-only вкладка метрик
 ├── Utils/
 │   └── chunking.py                                  # Скрипт чанкинга (V1 и V2)
 ├── Raw data/                                        # Исходные материалы (.pdf, .doc, .docx)
@@ -48,13 +53,19 @@ onpz/
 │   ├── bm25_search.py
 │   ├── vector_search.py
 │   ├── hybrid_retrieval.py
+│   ├── runtime.py                                   # Кэш индексов и модели эмбеддингов
 │   ├── alpha_tuning.py
 │   ├── query_expansion.py                           # Раскрытие аббревиатур в запросе
 │   └── retrieval.py
 ├── Generation/                                      # Генерация ответа (неделя 6)
 │   ├── llm_client.py                                # Клиент llama-server
 │   ├── prompt.py                                    # Промпт и сборка контекста
+│   ├── rag_service.py                               # Сервисный слой retrieve/ask
 │   └── generate.py                                  # CLI генерации
+├── Tests/                                           # Unit-тесты (unittest)
+│   ├── test_prompt_context.py
+│   ├── test_runtime_parity.py
+│   └── test_rag_service.py
 ├── Eval/                                            # Разметка, прогоны и оценка (неделя 7)
 │   ├── test_queries.json                            # 25 запросов с gold_chunk_ids
 │   ├── alpha_tuning.md
@@ -86,7 +97,7 @@ onpz/
 | Векторная БД | FAISS / ChromaDB | Qdrant |
 | BM25 | rank_bm25 | elasticsearch |
 | LLM | llama.cpp + T-lite-it-2.1 8B (Q4_K_M) | transformers / внешний API |
-| Интерфейс | Gradio / Streamlit | CLI |
+| Интерфейс | Gradio (локальный веб-интерфейс) | Streamlit |
 | Оценка | scikit-learn, numpy | – |
 
 ## План работы (10 недель)
@@ -98,7 +109,7 @@ onpz/
 5. ✅ Гибридный поиск BM25 + векторный, подбор веса `alpha = 0.7`.
 6. ✅ Подключение LLM: промпт-инжиниринг, генерация ответов с контекстом и ссылками.
 7. ✅ Оценка: Recall@5, MRR, Answer Accuracy, Hallucination Rate.
-8. ⬜ Веб-интерфейс (Gradio/Streamlit): чат + отображение источников.
+8. ⬜ Веб-интерфейс на Gradio: реализован, требуется финальная проверка с запущенным llama-server.
 9. ⬜ Пояснительная записка (25–35 стр.).
 10. ⬜ Презентация и защита.
 
@@ -204,6 +215,72 @@ python Generation/generate.py --run_all --expand_abbrev --tag abbrev
 * `Eval/answers.jsonl` — по одной JSON-строке на запрос (retrieval, ответ, usage, latency);
 * `Eval/generation_results.md` — человекочитаемый отчёт по 25 запросам;
 * при `--tag <tag>` создаются `Eval/answers_<tag>.jsonl` и `Eval/generation_results_<tag>.md`, baseline-файлы не перезаписываются.
+
+## Веб-интерфейс (неделя 8)
+
+Локальное однопользовательское приложение на **Gradio**: чат по регламенту, ответ LLM со ссылками `[n]`, карточки источников с метаданными и оценками релевантности, read-only вкладка метрик. Все сетевые вызовы идут только на `127.0.0.1` (llama-server); телеметрия Gradio отключена.
+
+### Установка
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+python -m pip install -r requirements.txt
+```
+
+### Запуск
+
+1. Запустите llama-server (команда из раздела «Генерация ответа»):
+
+   ```powershell
+   llama-server -m "Models/T-lite-it-2.1-Q4_K_M.gguf" -c 8192 -ngl 99 -fa on --jinja --host 127.0.0.1 --port 8080
+   ```
+
+2. В корне репозитория запустите интерфейс:
+
+   ```powershell
+   python App/app.py
+   ```
+
+   Варианты запуска:
+
+   ```powershell
+   python App/app.py --no-browser          # не открывать браузер автоматически
+   python App/app.py --port 7861           # если порт 7860 занят
+   .\run_app.ps1                           # запуск в один клик
+   .\run_app.ps1 -NoBrowser -Port 7861     # то же с параметрами
+   ```
+
+3. Откройте `http://127.0.0.1:7860`.
+
+### Возможности
+
+* чат с историей в рамках сессии; каждый вопрос независим — история в LLM не передаётся;
+* настройки `top_k` (1–10), `alpha` (0–1) и метода поиска: `hybrid`, `bm25`, `vector`;
+* раскрытие аббревиатур в поисковом запросе;
+* карточки источников: номер `[n]`, `chunk_id`, документ, раздел/подраздел, тип, score и текст; для `list_item`-групп — соседние пункты процедуры;
+* источники строятся только по блокам, реально попавшим в контекст LLM (лимит 9000 символов); при обрезке показывается, сколько фрагментов не поместилось;
+* статус LLM с кнопкой проверки соединения и командой запуска;
+* примеры вопросов из `Eval/test_queries.json` без эталонных ответов и `gold_chunk_ids`;
+* вкладка «Метрики»: Recall@5, MRR@5, refusal rate, top_k 3/5/10, аббревиатуры; данные только читаются из `Eval/`;
+* кнопки «Очистить чат» и «Скачать историю» (JSON).
+
+### Ограничения
+
+* прототип локальный, однопользовательский, без авторизации и без внешних API;
+* ответы ограничены учебным корпусом из 10 документов и 206 чанков;
+* история чата не передаётся в LLM, RAG по диалогу не поддерживается;
+* контекст ограничен 9000 символами и обрезается по границе блока;
+* `Answer Accuracy` и `Hallucination Rate` остаются `null` до заполнения `Eval/manual_scores.json`; интерфейс показывает `—` и предупреждение, оценки не подставляет.
+
+### Troubleshooting
+
+| Проблема | Что сделать |
+|---|---|
+| Статус LLM красный, вопрос возвращает ошибку | Запустите llama-server на `127.0.0.1:8080` и нажмите «Проверить соединение». Проверьте `LLM_BASE_URL`, если сервер на другом адресе. |
+| Порт 7860 занят | Запустите `python App/app.py --port 7861` или `.\run_app.ps1 -Port 7861`. |
+| `ModuleNotFoundError: gradio` | Выполните `python -m pip install -r requirements.txt`. |
+| Не загружаются индексы | Проверьте `Chunks/bm25_index.pkl`, `Chunks/faiss_index.bin`, `Chunks/faiss_chunk_ids.json` и локальный кэш модели `sergeyzh/rubert-tiny-turbo`. Интерфейс не пересобирает индексы автоматически. |
+| Кириллица ломается в консоли | Задайте `$env:PYTHONIOENCODING='utf-8'` перед запуском. |
 
 ## Оценка
 

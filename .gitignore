@@ -184,3 +184,8 @@ cython_debug/
 Models/
 models/
 *.gguf
+
+# Gradio service directories
+flagged/
+.gradio/
+gradio_cached_examples/
