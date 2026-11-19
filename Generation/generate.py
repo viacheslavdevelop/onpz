@@ -18,8 +18,8 @@ from hybrid_retrieval import (
     build_list_groups,
     expand_results,
     format_expanded_procedure,
+    group_siblings_by_source,
     hybrid_search,
-    list_group_key,
 )
 from query_expansion import expand_query
 
@@ -47,21 +47,7 @@ def build_expanded_by_source(
     list_groups: dict,
 ) -> dict[str, list[dict]]:
     """Привязать соседей по list_item-группе к первому найденному источнику группы."""
-    sources_by_group: dict[tuple, list[str]] = {}
-    for chunk_id, _score in results:
-        key = list_group_key(chunk_lookup.get(chunk_id, {}))
-        if key is not None:
-            sources_by_group.setdefault(key, []).append(chunk_id)
-
-    expanded_by_source: dict[str, list[dict]] = {}
-    for key, source_ids in sources_by_group.items():
-        primary_source = source_ids[0]
-        source_id_set = set(source_ids)
-        siblings = list_groups.get(key, [])
-        expanded_by_source[primary_source] = [
-            sibling for sibling in siblings if sibling["chunk_id"] not in source_id_set
-        ]
-    return expanded_by_source
+    return group_siblings_by_source(results, chunk_lookup, list_groups)
 
 
 def collect_expanded_chunks(
@@ -202,7 +188,8 @@ def generate_answer(
 
     expanded = collect_expanded_chunks(results, chunk_lookup, list_groups)
     expanded_by_source = build_expanded_by_source(results, chunk_lookup, list_groups)
-    context = prompt_builder.build_context(results, chunk_lookup, expanded_by_source)
+    blocks = prompt_builder.build_context_blocks(results, chunk_lookup, expanded_by_source)
+    context = prompt_builder.render_context(blocks)
     messages = prompt_builder.build_messages(query["query_text"], context)
 
     response = llm_client.chat(messages, temperature=DEFAULT_TEMPERATURE, think=think)

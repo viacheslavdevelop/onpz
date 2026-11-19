@@ -1,6 +1,7 @@
 """Промпт и сборка контекста для генерации ответа по регламенту."""
 
 import re
+from dataclasses import dataclass
 
 REFUSAL_PHRASE = "Информация не найдена в регламенте."
 MAX_CONTEXT_CHARS = 9000
@@ -85,13 +86,24 @@ def _format_block(number: int, chunk: dict, extra_chunks: list[dict] | None = No
     return f"{_format_chunk_header(number, chunk)}\n{_format_chunk_body(chunk, extra_chunks)}"
 
 
-def build_context(
+@dataclass(frozen=True)
+class ContextBlock:
+    """Блок контекста, реально переданный в LLM и показанный как источник."""
+
+    number: int
+    chunk_id: str
+    chunk: dict
+    extra_chunks: tuple[dict, ...] = ()
+    text: str = ""
+
+
+def build_context_blocks(
     results: list[tuple[str, float]],
     chunk_lookup: dict,
     expanded_chunks: dict[str, list[dict]] | None = None,
-) -> str:
-    """Собрать пронумерованный контекст, обрезая его по границе блока."""
-    blocks: list[str] = []
+) -> list[ContextBlock]:
+    """Собрать пронумерованные блоки контекста, обрезая их по границе блока."""
+    blocks: list[ContextBlock] = []
     current_length = 0
     number = 0
 
@@ -101,16 +113,38 @@ def build_context(
             continue
 
         number += 1
-        extras = (expanded_chunks or {}).get(chunk_id)
-        block = _format_block(number, chunk, extras)
+        extras = tuple((expanded_chunks or {}).get(chunk_id) or ())
+        text = _format_block(number, chunk, list(extras))
         separator_length = 2 if blocks else 0
-        if blocks and current_length + separator_length + len(block) > MAX_CONTEXT_CHARS:
+        if blocks and current_length + separator_length + len(text) > MAX_CONTEXT_CHARS:
             break
 
-        blocks.append(block)
-        current_length += separator_length + len(block)
+        blocks.append(
+            ContextBlock(
+                number=number,
+                chunk_id=chunk_id,
+                chunk=chunk,
+                extra_chunks=extras,
+                text=text,
+            )
+        )
+        current_length += separator_length + len(text)
 
-    return "\n\n".join(blocks)
+    return blocks
+
+
+def render_context(blocks: list[ContextBlock]) -> str:
+    """Склеить блоки контекста через пустую строку."""
+    return "\n\n".join(block.text for block in blocks)
+
+
+def build_context(
+    results: list[tuple[str, float]],
+    chunk_lookup: dict,
+    expanded_chunks: dict[str, list[dict]] | None = None,
+) -> str:
+    """Собрать пронумерованный контекст, обрезая его по границе блока."""
+    return render_context(build_context_blocks(results, chunk_lookup, expanded_chunks))
 
 
 def build_messages(query: str, context: str) -> list[dict]:
@@ -122,15 +156,27 @@ def build_messages(query: str, context: str) -> list[dict]:
     ]
 
 
+def _format_source_line(number: int, chunk_id: str, chunk: dict) -> str:
+    document = chunk.get("document", "")
+    location = humanize_math(_chunk_location(chunk))
+    description = f"{document}, {location}" if location else document
+    return f"{number}. `{chunk_id}` — {description}"
+
+
 def format_sources(results: list[tuple[str, float]], chunk_lookup: dict) -> str:
     """Сформировать блок источников кодом, а не моделью."""
     lines = ["**Источники:**"]
     for number, (chunk_id, _score) in enumerate(results, start=1):
         chunk = chunk_lookup.get(chunk_id, {})
-        document = chunk.get("document", "")
-        location = humanize_math(_chunk_location(chunk))
-        description = f"{document}, {location}" if location else document
-        lines.append(f"{number}. `{chunk_id}` — {description}")
+        lines.append(_format_source_line(number, chunk_id, chunk))
+    return "\n".join(lines)
+
+
+def format_sources_from_blocks(blocks: list[ContextBlock]) -> str:
+    """Сформировать источники только по блокам, реально вошедшим в контекст."""
+    lines = ["**Источники:**"]
+    for block in blocks:
+        lines.append(_format_source_line(block.number, block.chunk_id, block.chunk))
     return "\n".join(lines)
 
 
