@@ -194,6 +194,8 @@ def generate_answer(
 
     response = llm_client.chat(messages, temperature=DEFAULT_TEMPERATURE, think=think)
     answer = prompt_builder.sanitize_citations(response["text"].strip(), context)
+    if prompt_builder.is_refusal(answer):
+        answer = prompt_builder.REFUSAL_PHRASE
     if not answer:
         print(f"Предупреждение: пустой ответ модели на запрос {query['query_id']}", file=sys.stderr)
 

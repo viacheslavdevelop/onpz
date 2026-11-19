@@ -95,6 +95,11 @@ class RagServiceTest(unittest.TestCase):
         result = self._ask("Информация не найдена в регламенте.")
         self.assertTrue(result.refused)
 
+    def test_refusal_is_normalized_to_exact_phrase(self) -> None:
+        result = self._ask("Информация не найдена в регламенте. [1]")
+        self.assertTrue(result.refused)
+        self.assertEqual(result.answer, "Информация не найдена в регламенте.")
+
     def test_missing_text_is_not_refusal(self) -> None:
         result = self._ask("")
         self.assertEqual(result.answer, "")

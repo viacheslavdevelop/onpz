@@ -171,6 +171,8 @@ def ask(
     messages = prompt_builder.build_messages(view.question, view.context)
     response = llm_client.chat(messages, temperature=DEFAULT_TEMPERATURE, think=think)
     answer = prompt_builder.sanitize_citations(response["text"].strip(), view.context)
+    if prompt_builder.is_refusal(answer):
+        answer = prompt_builder.REFUSAL_PHRASE
 
     return RAGAnswer(
         question=view.question,
