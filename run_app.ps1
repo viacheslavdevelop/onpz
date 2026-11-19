@@ -1,15 +1,27 @@
 param(
     [switch]$NoBrowser,
-    [int]$Port = 7860
+    [int]$Port = 7860,
+    [int]$LlamaPort = 8080,
+    [string]$LlamaServer = "",
+    [string]$Model = "",
+    [switch]$NoLlama,
+    [switch]$Check
 )
 
 $env:PYTHONIOENCODING = 'utf-8'
 Set-Location $PSScriptRoot
 
-$arguments = @('App/app.py', '--port', $Port)
-if ($NoBrowser) {
-    $arguments += '--no-browser'
-}
+$arguments = @(
+    'run_app.py',
+    '--ui-port', "$Port",
+    '--llama-port', "$LlamaPort"
+)
+
+if ($NoBrowser) { $arguments += '--no-browser' }
+if ($LlamaServer) { $arguments += @('--llama-server', $LlamaServer) }
+if ($Model) { $arguments += @('--model', $Model) }
+if ($NoLlama) { $arguments += '--no-llama' }
+if ($Check) { $arguments += '--check' }
 
 python @arguments
 exit $LASTEXITCODE
