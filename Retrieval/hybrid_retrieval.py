@@ -105,6 +105,33 @@ def chunk_summary(chunk: dict) -> str:
     return f"{location} | {snippet}"
 
 
+def group_siblings_by_source(
+    results: list[tuple[str, float]],
+    chunk_lookup: dict,
+    list_groups: dict,
+) -> dict[str, list[dict]]:
+    """Для каждого источника вернуть соседей его list_item-группы.
+
+    Соседи привязываются к первому найденному источнику группы и не включают
+    чанки, которые уже попали в результаты поиска.
+    """
+    sources_by_group: dict[tuple, list[str]] = {}
+    for chunk_id, _score in results:
+        key = list_group_key(chunk_lookup.get(chunk_id, {}))
+        if key is not None:
+            sources_by_group.setdefault(key, []).append(chunk_id)
+
+    expanded_by_source: dict[str, list[dict]] = {}
+    for key, source_ids in sources_by_group.items():
+        primary_source = source_ids[0]
+        source_id_set = set(source_ids)
+        siblings = list_groups.get(key, [])
+        expanded_by_source[primary_source] = [
+            sibling for sibling in siblings if sibling["chunk_id"] not in source_id_set
+        ]
+    return expanded_by_source
+
+
 def min_max_normalize(scores: dict[str, float]) -> dict[str, float]:
     """Нормализует словарь {chunk_id: score} в диапазон [0, 1].
 
