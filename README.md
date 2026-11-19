@@ -16,7 +16,9 @@ onpz/
 ├── PLAN_AI_AGENT.md                                 # План работ недели 8 (веб-интерфейс на Gradio)
 ├── README.md
 ├── requirements.txt
-├── run_app.ps1                                      # Запуск веб-интерфейса в один клик
+├── run_app.py                                       # Единый запуск llama-server + Gradio (Windows/macOS)
+├── run_app.ps1                                      # Обёртка для Windows
+├── run_app.sh                                       # Обёртка для macOS/Linux
 ├── .gitignore
 ├── App/                                             # Веб-интерфейс (неделя 8)
 │   ├── app.py                                       # Точка входа Gradio
@@ -65,7 +67,9 @@ onpz/
 ├── Tests/                                           # Unit-тесты (unittest)
 │   ├── test_prompt_context.py
 │   ├── test_runtime_parity.py
-│   └── test_rag_service.py
+│   ├── test_rag_service.py
+│   ├── test_ui_components.py
+│   └── test_launcher.py
 ├── Eval/                                            # Разметка, прогоны и оценка (неделя 7)
 │   ├── test_queries.json                            # 25 запросов с gold_chunk_ids
 │   ├── alpha_tuning.md
@@ -163,7 +167,7 @@ python Utils/chunking.py
 
 Ответ синтезируется локальной LLM **T-lite-it-2.1 8B** (GGUF `Q4_K_M`, архитектура Qwen3, русскоязычная настройка) через `llama-server` с OpenAI-совместимым API. Веса лежат в `Models/T-lite-it-2.1-Q4_K_M.gguf` и не коммитятся.
 
-Запуск сервера (llama.cpp устанавливается отдельно):
+Для одновременного запуска LLM и веб-интерфейса используйте `python run_app.py` (см. раздел «Запуск всего стека одной командой»). Ниже — ручной запуск сервера (llama.cpp устанавливается отдельно):
 
 ```powershell
 llama-server -m "Models/T-lite-it-2.1-Q4_K_M.gguf" `
@@ -216,6 +220,127 @@ python Generation/generate.py --run_all --expand_abbrev --tag abbrev
 * `Eval/generation_results.md` — человекочитаемый отчёт по 25 запросам;
 * при `--tag <tag>` создаются `Eval/answers_<tag>.jsonl` и `Eval/generation_results_<tag>.md`, baseline-файлы не перезаписываются.
 
+## Запуск всего стека одной командой (Windows и macOS)
+
+`run_app.py` запускает сразу оба процесса: локальный `llama-server` и веб-интерфейс Gradio. Скрипт сам находит модель и `llama-server`, ждёт готовности LLM, открывает браузер, а по `Ctrl+C` останавливает то, что запустил. Внешние API и телеметрия не используются.
+
+### Windows
+
+```powershell
+cd C:\My\University\onpz
+python -m pip install -r requirements.txt
+python run_app.py
+```
+
+Или через обёртку:
+
+```powershell
+.\run_app.ps1
+```
+
+### macOS
+
+```bash
+cd /path/to/onpz
+python3 -m pip install -r requirements.txt
+brew install llama.cpp        # если llama-server ещё не установлен
+python3 run_app.py
+```
+
+Или через обёртку:
+
+```bash
+chmod +x run_app.sh
+./run_app.sh
+```
+
+### Что делает лаунчер
+
+1. Проверяет Python-зависимости (`gradio`, `requests`).
+2. Ищет `llama-server` в `PATH`, стандартных каталогах Homebrew и рядом с репозиторием.
+3. Проверяет, что GGUF-модель существует.
+4. Если `llama-server` уже отвечает на `/health`, переиспользует его и не запускает второй процесс.
+5. Запускает `llama-server` на `127.0.0.1:8080` и ждёт ответа `/health`.
+6. Запускает Gradio на `127.0.0.1:7860`, ждёт открытия порта и открывает браузер.
+7. По `Ctrl+C` останавливает интерфейс и только тот `llama-server`, который запустил сам.
+
+Проверить окружение без запуска процессов:
+
+```powershell
+python run_app.py --check
+```
+
+```bash
+python3 run_app.py --check
+```
+
+Полный набор unit-тестов:
+
+```powershell
+python -m unittest discover -s Tests -v
+```
+
+### Если llama-server не в PATH
+
+Windows:
+
+```powershell
+python run_app.py --llama-server "C:\tools\llama.cpp\llama-server.exe"
+
+# или на постоянную сессию
+$env:LLAMA_SERVER_BIN = "C:\tools\llama.cpp\llama-server.exe"
+```
+
+macOS:
+
+```bash
+python3 run_app.py --llama-server /opt/homebrew/bin/llama-server
+
+# или на постоянную сессию
+export LLAMA_SERVER_BIN=/opt/homebrew/bin/llama-server
+```
+
+Официальные сборки llama.cpp: <https://github.com/ggml-org/llama.cpp/releases>. Для Windows подойдёт вариант `llama-b<build>-bin-win-vulkan-x64.zip` (проверено на `b12532`), для macOS — `brew install llama.cpp` или архив `llama-b<build>-bin-macos-arm64.tar.gz`.
+
+### Модель
+
+По умолчанию используется `Models/T-lite-it-2.1-Q4_K_M.gguf`. Если файла нет, но в `Models/` лежит ровно один `.gguf`, лаунчер выберет его. Если моделей несколько, укажите нужную:
+
+```powershell
+python run_app.py --model "Models\my-model.gguf"
+```
+
+```bash
+python3 run_app.py --model Models/my-model.gguf
+```
+
+Переменная окружения для пути к модели — `ONPZ_MODEL_PATH`. Веса и `*.gguf` не коммитятся.
+
+### Параметры
+
+| Параметр | По умолчанию | Назначение |
+|---|---|---|
+| `--llama-server PATH` | `LLAMA_SERVER_BIN`, затем `PATH` | путь к исполняемому файлу `llama-server` |
+| `--model PATH` | `ONPZ_MODEL_PATH`, затем `Models/T-lite-it-2.1-Q4_K_M.gguf` | путь к GGUF-модели |
+| `--llama-host`, `--llama-port` | `127.0.0.1`, `8080` | адрес локального llama-server |
+| `--ui-host`, `--ui-port` | `127.0.0.1`, `7860` | адрес веб-интерфейса |
+| `--ctx-size` | `8192` | размер контекста llama-server |
+| `--ngl` | `99`; на Intel Mac — `0` | число слоёв модели на GPU |
+| `--no-flash-attn` | выключено | не передавать `-fa on` |
+| `--no-llama` | выключено | не запускать LLM, использовать уже запущенную |
+| `--no-browser` | выключено | не открывать браузер |
+| `--timeout` | `300` | сколько секунд ждать запуска LLM и интерфейса |
+| `--check` | выключено | проверить окружение и выйти |
+
+Примеры:
+
+```powershell
+python run_app.py --ui-port 7861          # если 7860 занят
+python run_app.py --no-llama              # только интерфейс
+python run_app.py --ngl 0                 # только CPU
+python run_app.py --timeout 900           # медленный диск с моделью
+```
+
 ## Веб-интерфейс (неделя 8)
 
 Локальное однопользовательское приложение на **Gradio**: чат по регламенту, ответ LLM со ссылками `[n]`, карточки источников с метаданными и оценками релевантности, read-only вкладка метрик. Все сетевые вызовы идут только на `127.0.0.1` (llama-server); телеметрия Gradio отключена.
@@ -229,11 +354,25 @@ python -m pip install -r requirements.txt
 
 ### Запуск
 
+Самый простой способ — запустить весь стек одной командой (см. раздел выше):
+
+```powershell
+python run_app.py
+```
+
+```powershell
+.\run_app.ps1
+```
+
+Ниже — ручной запуск в двух терминалах, если нужен контроль над каждым процессом.
+
 1. Запустите llama-server (команда из раздела «Генерация ответа»):
 
    ```powershell
    llama-server -m "Models/T-lite-it-2.1-Q4_K_M.gguf" -c 8192 -ngl 99 -fa on --jinja --host 127.0.0.1 --port 8080
    ```
+
+   На macOS команда та же, если `llama-server` установлен через Homebrew.
 
 2. В корне репозитория запустите интерфейс:
 
@@ -246,9 +385,11 @@ python -m pip install -r requirements.txt
    ```powershell
    python App/app.py --no-browser          # не открывать браузер автоматически
    python App/app.py --port 7861           # если порт 7860 занят
-   .\run_app.ps1                           # запуск в один клик
-   .\run_app.ps1 -NoBrowser -Port 7861     # то же с параметрами
+   .\run_app.ps1 -NoLlama                  # только интерфейс, без запуска LLM
+   .\run_app.ps1 -NoBrowser -Port 7861     # интерфейс на другом порту
    ```
+
+   На macOS вместо `python` используйте `python3`.
 
 3. Откройте `http://127.0.0.1:7860`.
 
@@ -276,11 +417,16 @@ python -m pip install -r requirements.txt
 
 | Проблема | Что сделать |
 |---|---|
-| Статус LLM красный, вопрос возвращает ошибку | Запустите llama-server на `127.0.0.1:8080` и нажмите «Проверить соединение». Проверьте `LLM_BASE_URL`, если сервер на другом адресе. |
-| Порт 7860 занят | Запустите `python App/app.py --port 7861` или `.\run_app.ps1 -Port 7861`. |
+| Статус LLM красный, вопрос возвращает ошибку | Запустите стек через `python run_app.py` или поднимите llama-server вручную на `127.0.0.1:8080` и нажмите «Проверить соединение». Проверьте `LLM_BASE_URL`, если сервер на другом адресе. |
+| `llama-server не найден` | Установите llama.cpp (`brew install llama.cpp` на macOS), добавьте его в `PATH` или укажите `--llama-server` / `LLAMA_SERVER_BIN`. |
+| Порт 7860 занят | Запустите `python run_app.py --ui-port 7861` или `.\run_app.ps1 -Port 7861`. |
+| Порт 8080 занят | Остановите старый llama-server или укажите `python run_app.py --llama-port 8081`; интерфейс получит адрес автоматически. |
+| Модель не найдена | Положите `.gguf` в `Models/` или укажите `--model` / `ONPZ_MODEL_PATH`. |
 | `ModuleNotFoundError: gradio` | Выполните `python -m pip install -r requirements.txt`. |
 | Не загружаются индексы | Проверьте `Chunks/bm25_index.pkl`, `Chunks/faiss_index.bin`, `Chunks/faiss_chunk_ids.json` и локальный кэш модели `sergeyzh/rubert-tiny-turbo`. Интерфейс не пересобирает индексы автоматически. |
-| Кириллица ломается в консоли | Задайте `$env:PYTHONIOENCODING='utf-8'` перед запуском. |
+| Кириллица ломается в консоли | Задайте `$env:PYTHONIOENCODING='utf-8'` перед запуском; лаунчер и обёртки делают это сами. |
+| macOS блокирует скачанный `llama-server` | Установите через `brew install llama.cpp` или снимите карантин: `xattr -d com.apple.quarantine /path/to/llama-server`. |
+| Непонятно, чего не хватает | Выполните `python run_app.py --check`. |
 
 ## Оценка
 
