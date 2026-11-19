@@ -185,6 +185,9 @@ Models/
 models/
 *.gguf
 
+# Local llama.cpp build (not committed)
+tools/llama.cpp/
+
 # Gradio service directories
 flagged/
 .gradio/

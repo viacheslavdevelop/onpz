@@ -257,7 +257,7 @@ chmod +x run_app.sh
 ### Что делает лаунчер
 
 1. Проверяет Python-зависимости (`gradio`, `requests`).
-2. Ищет `llama-server` в `PATH`, стандартных каталогах Homebrew и рядом с репозиторием.
+2. Ищет `llama-server` в `PATH`, стандартных каталогах Homebrew и в `tools/llama.cpp/`.
 3. Проверяет, что GGUF-модель существует.
 4. Если `llama-server` уже отвечает на `/health`, переиспользует его и не запускает второй процесс.
 5. Запускает `llama-server` на `127.0.0.1:8080` и ждёт ответа `/health`.
@@ -299,6 +299,8 @@ python3 run_app.py --llama-server /opt/homebrew/bin/llama-server
 # или на постоянную сессию
 export LLAMA_SERVER_BIN=/opt/homebrew/bin/llama-server
 ```
+
+Сборку можно распаковать в `tools/llama.cpp/` — лаунчер найдёт `tools/llama.cpp/llama-server.exe` автоматически, и путь не придётся указывать каждый раз. Каталог `tools/llama.cpp/` исключён из git.
 
 Официальные сборки llama.cpp: <https://github.com/ggml-org/llama.cpp/releases>. Для Windows подойдёт вариант `llama-b<build>-bin-win-vulkan-x64.zip` (проверено на `b12532`), для macOS — `brew install llama.cpp` или архив `llama-b<build>-bin-macos-arm64.tar.gz`.
 
