@@ -118,10 +118,16 @@ def format_meta(meta: dict, sources_count: int, answer: str = "") -> str:
     ]
 
     if meta.get("context_truncated"):
-        total = sources_count + int(meta.get("omitted_sources", 0))
+        omitted = int(meta.get("omitted_sources", 0))
+        total = sources_count + omitted
+        verb = (
+            "не поместился"
+            if omitted % 10 == 1 and omitted % 100 != 11
+            else "не поместились"
+        )
         lines.append(
             f"В контекст вошли {sources_count} из {total} источников; "
-            f"{meta.get('omitted_sources', 0)} не поместились из-за лимита 9000 символов."
+            f"{omitted} {verb} из-за лимита 9000 символов."
         )
 
     if meta.get("refused"):
