@@ -32,6 +32,42 @@ def _models_url() -> str:
     return f"{BASE_URL.rstrip('/')}/models"
 
 
+HEALTHCHECK_ERROR = (
+    "LLM недоступна. Запустите llama-server "
+    "(см. README.md, раздел «Генерация ответа»)."
+)
+
+
+def _probe_error(exc: Exception) -> str:
+    """Короткая причина недоступности без трассировки."""
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        return f"HTTP {exc.response.status_code}"
+    if isinstance(exc, requests.Timeout):
+        return "таймаут соединения"
+    if isinstance(exc, requests.ConnectionError):
+        return f"нет соединения с {BASE_URL}"
+    return str(exc)[:200]
+
+
+def probe(timeout_s: float = 2.0) -> dict:
+    """Быстрая проверка доступности LLM без исключения.
+
+    Возвращает {"ok": bool, "model": str | None, "error": str | None}.
+    """
+    try:
+        response = requests.get(_models_url(), timeout=timeout_s)
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        return {"ok": False, "model": None, "error": _probe_error(exc)}
+
+    if not isinstance(data, dict):
+        return {"ok": False, "model": None, "error": "неожиданный формат ответа"}
+    models = data.get("data") or []
+    model = models[0].get("id", MODEL) if models else MODEL
+    return {"ok": True, "model": model, "error": None}
+
+
 def healthcheck() -> str:
     """Проверить доступность сервера и вернуть идентификатор модели."""
     try:
@@ -39,15 +75,11 @@ def healthcheck() -> str:
         response.raise_for_status()
         data = response.json()
     except (requests.RequestException, ValueError) as exc:
-        raise RuntimeError(
-            "LLM недоступна. Запустите llama-server (см. PLAN_AI_AGENT.md, раздел 1)."
-        ) from exc
+        raise RuntimeError(HEALTHCHECK_ERROR) from exc
 
     models = data.get("data") or []
     if not models:
-        raise RuntimeError(
-            "LLM недоступна. Запустите llama-server (см. PLAN_AI_AGENT.md, раздел 1)."
-        )
+        raise RuntimeError(HEALTHCHECK_ERROR)
     return models[0].get("id", MODEL)
 
 
