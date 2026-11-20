@@ -49,6 +49,26 @@ class ParseArgsTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 run_app.parse_args(["--ui-port", "70000"])
 
+    def test_share_is_disabled_by_default(self) -> None:
+        args = run_app.parse_args([])
+        self.assertFalse(args.share)
+        self.assertEqual(args.share_auth, "")
+
+    def test_share_auth_requires_share(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                run_app.parse_args(["--share-auth", "curator:secret"])
+
+    def test_share_auth_requires_colon(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                run_app.parse_args(["--share", "--share-auth", "curator"])
+
+    def test_share_auth_is_accepted_with_share(self) -> None:
+        args = run_app.parse_args(["--share", "--share-auth", "curator:secret"])
+        self.assertTrue(args.share)
+        self.assertEqual(args.share_auth, "curator:secret")
+
     def test_environment_defaults(self) -> None:
         env = {
             "LLAMA_SERVER_BIN": "/custom/llama-server",
@@ -201,6 +221,31 @@ class BuildCommandsTest(unittest.TestCase):
                 "--port",
                 "7861",
                 "--no-browser",
+            ],
+        )
+
+    def test_ui_command_passes_share_flags(self) -> None:
+        command = run_app.build_ui_command(
+            "python",
+            Path("/repo"),
+            host="127.0.0.1",
+            port=7860,
+            share=True,
+            share_auth="curator:secret",
+        )
+        self.assertEqual(
+            command,
+            [
+                "python",
+                str(Path("/repo") / "App" / "app.py"),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "7860",
+                "--no-browser",
+                "--share",
+                "--auth",
+                "curator:secret",
             ],
         )
 

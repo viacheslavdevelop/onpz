@@ -8,6 +8,7 @@ import argparse
 import json
 import sys
 import tempfile
+import time
 import traceback
 from dataclasses import asdict
 from pathlib import Path
@@ -494,25 +495,73 @@ def build_demo() -> gr.Blocks:
     return demo
 
 
+def parse_auth(value: str) -> tuple[str, str]:
+    """Разобрать строку USER:PASSWORD для доступа к публичной ссылке."""
+    username, separator, password = value.partition(":")
+    if not separator or not username or not password:
+        raise argparse.ArgumentTypeError("ожидается формат USER:PASSWORD")
+    return username, password
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Веб-интерфейс RAG-поиска ЭЛОУ-АВТ")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument(
+        "--share",
+        action="store_true",
+        help="создать публичную ссылку Gradio для удалённого доступа",
+    )
+    parser.add_argument(
+        "--auth",
+        type=parse_auth,
+        metavar="USER:PASSWORD",
+        default=None,
+        help="логин и пароль для публичной ссылки (только вместе с --share)",
+    )
     args = parser.parse_args()
 
     if args.host not in {"127.0.0.1", "localhost"}:
         raise SystemExit("Допустим только локальный хост (127.0.0.1).")
+    if args.auth is not None and not args.share:
+        raise SystemExit("--auth используется только вместе с --share.")
 
     demo = build_demo()
     demo.queue(default_concurrency_limit=1)
     demo.launch(
         server_name=args.host,
         server_port=args.port,
-        share=False,
+        share=args.share,
+        auth=args.auth,
         inbrowser=not args.no_browser,
         show_api=False,
+        prevent_thread_lock=args.share,
     )
+
+    if not args.share:
+        return 0
+
+    if not demo.share_url:
+        print(
+            "Не удалось создать публичную ссылку Gradio. "
+            "Проверьте доступ в интернет и попробуйте ещё раз.",
+            file=sys.stderr,
+            flush=True,
+        )
+        demo.close()
+        return 1
+
+    print(f"Публичная ссылка для проверки: {demo.share_url}", flush=True)
+    print(
+        "Ссылка живёт до недели и работает, пока этот компьютер включён.",
+        flush=True,
+    )
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        demo.close()
     return 0
 
 

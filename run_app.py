@@ -152,6 +152,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="не открывать браузер автоматически",
     )
     parser.add_argument(
+        "--share",
+        action="store_true",
+        help="создать публичную ссылку Gradio для удалённой проверки",
+    )
+    parser.add_argument(
+        "--share-auth",
+        metavar="USER:PASSWORD",
+        default="",
+        help="логин и пароль для публичной ссылки (только с --share)",
+    )
+    parser.add_argument(
         "--timeout",
         type=_positive_float,
         default=DEFAULT_TIMEOUT_S,
@@ -180,6 +191,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     if args.ngl < 0:
         parser.error("--ngl: число слоёв не может быть отрицательным")
+
+    if args.share_auth:
+        if not args.share:
+            parser.error("--share-auth используется только вместе с --share")
+        username, separator, password = args.share_auth.partition(":")
+        if not separator or not username or not password:
+            parser.error("--share-auth: ожидается формат USER:PASSWORD")
 
     return args
 
@@ -365,9 +383,15 @@ def build_llama_command(
 
 
 def build_ui_command(
-    python: str, root: Path, *, host: str, port: int
+    python: str,
+    root: Path,
+    *,
+    host: str,
+    port: int,
+    share: bool = False,
+    share_auth: str = "",
 ) -> list[str]:
-    return [
+    command = [
         python,
         str(root / "App" / "app.py"),
         "--host",
@@ -376,6 +400,11 @@ def build_ui_command(
         str(port),
         "--no-browser",
     ]
+    if share:
+        command.append("--share")
+        if share_auth:
+            command.extend(["--auth", share_auth])
+    return command
 
 
 def build_ui_env(
@@ -672,6 +701,8 @@ def run(args: argparse.Namespace) -> int:
             BASE_DIR,
             host=args.ui_host,
             port=args.ui_port,
+            share=args.share,
+            share_auth=args.share_auth,
         )
         log("Запускаю веб-интерфейс:")
         log("  " + " ".join(ui_command))
@@ -690,7 +721,13 @@ def run(args: argparse.Namespace) -> int:
         )
 
         ui_url = _ui_url(args)
-        log(f"Интерфейс доступен: {ui_url}")
+        log(f"Интерфейс доступен локально: {ui_url}")
+        if args.share:
+            log(
+                "Публичная ссылка для куратора появится ниже в логе — в строке "
+                "«Публичная ссылка для проверки»."
+            )
+            log("Она работает до недели и только пока этот компьютер включён.")
         if not args.no_browser:
             if not webbrowser.open(ui_url):
                 log("Не удалось открыть браузер автоматически — откройте URL вручную.")
